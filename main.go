@@ -5,10 +5,12 @@ import (
 )
 
 func main() {
-	serveMux := http.NewServeMux()
-
-	chirpyServer := http.Server{
-		Handler: serveMux,
+	mux := http.NewServeMux()
+	mux.Handle("/", http.FileServer(http.Dir(".")))
+	chirpyServer := &http.Server{
+		Addr:    ":8080",
+		Handler: mux,
 	}
+
 	chirpyServer.ListenAndServe()
 }
