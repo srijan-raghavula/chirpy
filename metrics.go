@@ -30,3 +30,13 @@ func (cfg *apiConfig) metricsHandlerFunc(w http.ResponseWriter, req *http.Reques
 	`, cfg.fsVisits)))
 	w.Header().Add("Content-Type", "text/html; charset=utf-8")
 }
+
+func (cfg *apiConfig) getNewId() int {
+	cfg.id++
+	return cfg.id
+}
+
+func (usrCfg *userConfig) getNewId() int {
+	usrCfg.id++
+	return usrCfg.id
+}
