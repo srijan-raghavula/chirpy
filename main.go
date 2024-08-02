@@ -2,6 +2,7 @@ package main
 
 import (
 	"flag"
+	"github.com/joho/godotenv"
 	"github.com/srijan-raghavula/chirpy/internal/database"
 	"net/http"
 	"os"
@@ -9,8 +10,9 @@ import (
 )
 
 type apiConfig struct {
-	fsVisits int
-	id       int
+	fsVisits  int
+	id        int
+	jwtSecret string
 }
 
 type userConfig struct {
@@ -23,6 +25,8 @@ var dbPath = database.DBPath{
 }
 
 func main() {
+	godotenv.Load()
+
 	dbg := flag.Bool("debug", false, "Enable debug mode")
 	flag.Parse()
 	if *dbg {
@@ -31,8 +35,9 @@ func main() {
 
 	mux := http.NewServeMux()
 	apiCfg := apiConfig{
-		fsVisits: 0,
-		id:       0,
+		fsVisits:  0,
+		id:        0,
+		jwtSecret: os.Getenv("JWT_SECRET"),
 	}
 	usrCfg := userConfig{
 		id: 0,
@@ -55,7 +60,8 @@ func main() {
 	mux.HandleFunc("GET /api/chirps/{chirpID}", apiCfg.getChirp)
 
 	mux.HandleFunc("POST /api/users", usrCfg.createUser)
-	mux.HandleFunc("POST /api/login", usrCfg.login)
+	mux.HandleFunc("PUT /api/users", apiCfg.updateUserCreds)
+	mux.HandleFunc("POST /api/login", apiCfg.login)
 
 	chirpyServer.ListenAndServe()
 }

@@ -2,9 +2,13 @@ package main
 
 import (
 	"encoding/json"
+	"errors"
+	"github.com/golang-jwt/jwt/v5"
 	"github.com/srijan-raghavula/chirpy/internal/database"
 	"golang.org/x/crypto/bcrypt"
 	"net/http"
+	"strings"
+	"time"
 )
 
 type userLogin struct {
@@ -56,7 +60,7 @@ func (usrCfg *userConfig) newUser(email string, password []byte) (database.User,
 	return user, passwordStruct
 }
 
-func (usrCfg *userConfig) login(w http.ResponseWriter, r *http.Request) {
+func (cfg *apiConfig) login(w http.ResponseWriter, r *http.Request) {
 	decoder := json.NewDecoder(r.Body)
 	creds := userLogin{}
 	err := decoder.Decode(&creds)
@@ -65,7 +69,7 @@ func (usrCfg *userConfig) login(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	user, loginSuccess, err := dbPath.AuthUser(creds.Email, []byte(creds.Password))
+	user, loginSuccess, err := dbPath.AuthUser(creds.Email, []byte(creds.Password), cfg.jwtSecret, creds.ExpiresInSec)
 	if err != nil {
 		respondWithError(w, err.Error())
 		return
@@ -83,6 +87,49 @@ func (usrCfg *userConfig) login(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	w.WriteHeader(http.StatusOK)
+	w.Write(writeData)
+}
+
+func (apiCfg *apiConfig) updateUserCreds(w http.ResponseWriter, r *http.Request) {
+	decoder := json.NewDecoder(r.Body)
+	newCreds := database.Creds{}
+
+	tokenStr := strings.TrimPrefix("Bearer ", r.Header.Get("token"))
+	token, err := jwt.ParseWithClaims(tokenStr, &jwt.RegisteredClaims{Issuer: "chirpy"}, func(token *jwt.Token) (interface{}, error) {
+		if token.Method.Alg() != jwt.SigningMethodHS256.Alg() {
+			return []byte{}, errors.New("different signing method")
+		}
+		if issuer, _ := token.Claims.GetIssuer(); issuer != "chirpy" {
+			return []byte{}, errors.New("invalid issuer")
+		}
+
+		expirationTime, _ := token.Claims.GetExpirationTime()
+		if time.Now().After(expirationTime.Time) {
+			return []byte{}, errors.New("token expired")
+		}
+
+		return apiCfg.jwtSecret, nil
+	})
+
+	if !token.Valid {
+		w.WriteHeader(http.StatusUnauthorized)
+		w.Write([]byte("Unauthorized access"))
+	}
+
+	err = decoder.Decode(&newCreds)
+	if err != nil {
+		respondWithError(w, err.Error())
+	}
+
+	updatedUser, err := dbPath.UpdateUser(token, newCreds)
+	if err != nil {
+		respondWithError(w, err.Error())
+	}
+	writeData, err := json.Marshal(updatedUser)
+	if err != nil {
+		respondWithError(w, err.Error())
+	}
 	w.WriteHeader(http.StatusOK)
 	w.Write(writeData)
 }

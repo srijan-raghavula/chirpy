@@ -3,9 +3,12 @@ package database
 import (
 	"encoding/json"
 	"errors"
-	"os"
-
+	"github.com/golang-jwt/jwt/v5"
+	"github.com/srijan-raghavula/chirpy/internal/secret"
 	"golang.org/x/crypto/bcrypt"
+	"os"
+	"strconv"
+	"time"
 )
 
 type User struct {
@@ -13,14 +16,27 @@ type User struct {
 	Email string `json:"email"`
 }
 
+type UserLogin struct {
+	Email     string        `json:"email"`
+	Id        int           `json:"id"`
+	ExpiresIn time.Duration `json:"expires_in_seconds"`
+}
+
+type authenticatedUser struct {
+	Email string `json:"email"`
+	Id    int    `json:"id"`
+	Token string `json:"token"`
+}
+
 type UserPassword struct {
 	Id       int    `json:"id"`
 	Password []byte `json:"password"`
 }
 
-type resUser struct {
-	Id    int    `json:"id"`
-	Email string `json:"email"`
+type Creds struct {
+	Id       int    `json:"id"`
+	Email    string `json:"email"`
+	Password string `json:"password"`
 }
 
 func (dbPath *DBPath) AddUser(user User, password UserPassword) error {
@@ -142,8 +158,12 @@ func (dbPath *DBPath) getUserByEmail(email string) (User, bool, error) {
 	return User{}, false, nil
 }
 
-func (dbPath DBPath) AuthUser(email string, password []byte) (User, bool, error) {
-	user, exists, err := dbPath.getUserByEmail(email)
+func (dbPath DBPath) AuthUser(email string, password []byte, jwtSecret string, expiresIn int) (authenticatedUser, bool, error) {
+	userGeneral, exists, err := dbPath.getUserByEmail(email)
+	user := authenticatedUser{
+		Email: userGeneral.Email,
+		Id:    userGeneral.Id,
+	}
 	if err != nil {
 		return user, false, err
 	}
@@ -162,8 +182,53 @@ func (dbPath DBPath) AuthUser(email string, password []byte) (User, bool, error)
 
 	err = bcrypt.CompareHashAndPassword(pwdMap[user.Id].Password, password)
 	if err != nil {
-		return User{}, false, nil
+		return authenticatedUser{}, false, nil
+	}
+
+	user.Token, err = secret.GetToken(user.Id, time.Duration(expiresIn), jwtSecret)
+	if err != nil {
+		return user, false, err
 	}
 
 	return user, true, nil
+}
+
+func (dbPath *DBPath) UpdateUser(token *jwt.Token, newCreds Creds) (User, error) {
+	var updatedUser User
+
+	userIdStr, err := token.Claims.GetSubject()
+	if err != nil {
+		return updatedUser, err
+	}
+
+	userId, err := strconv.Atoi(userIdStr)
+	if err != nil {
+		return updatedUser, err
+	}
+
+	var db DBStructure
+	data, err := os.ReadFile(dbPath.Path)
+	if err != nil {
+		return updatedUser, err
+	}
+	json.Unmarshal(data, &db)
+
+	// update the old user with new email
+	oldUser := db.Users[userId]
+	oldUser.Email = newCreds.Email
+	db.Users[userId] = oldUser
+
+	passwordHash, err := bcrypt.GenerateFromPassword([]byte(newCreds.Password), bcrypt.DefaultCost)
+	if err != nil {
+		return updatedUser, err
+	}
+
+	// update old password with new hash
+	oldPassword := db.Passwords[userId]
+	oldPassword.Password = passwordHash
+	db.Passwords[userId] = oldPassword
+
+	updatedUser, err = dbPath.GetUser(userId)
+
+	return updatedUser, err
 }
