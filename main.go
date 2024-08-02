@@ -4,6 +4,7 @@ import (
 	"flag"
 	"github.com/joho/godotenv"
 	"github.com/srijan-raghavula/chirpy/internal/database"
+	"log"
 	"net/http"
 	"os"
 	"sync"
@@ -25,7 +26,10 @@ var dbPath = database.DBPath{
 }
 
 func main() {
-	godotenv.Load()
+	err := godotenv.Load()
+	if err != nil {
+		log.Fatalln("Error loading file:", err)
+	}
 
 	dbg := flag.Bool("debug", false, "Enable debug mode")
 	flag.Parse()
@@ -34,10 +38,11 @@ func main() {
 	}
 
 	mux := http.NewServeMux()
+	secret := os.Getenv("JWT_SECRET")
 	apiCfg := apiConfig{
 		fsVisits:  0,
 		id:        0,
-		jwtSecret: os.Getenv("JWT_SECRET"),
+		jwtSecret: secret,
 	}
 	usrCfg := userConfig{
 		id: 0,
