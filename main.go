@@ -68,5 +68,6 @@ func main() {
 	mux.HandleFunc("PUT /api/users", apiCfg.updateUserCreds)
 	mux.HandleFunc("POST /api/login", apiCfg.login)
 
+	log.Println("Server running")
 	chirpyServer.ListenAndServe()
 }

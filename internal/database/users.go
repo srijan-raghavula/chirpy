@@ -159,6 +159,9 @@ func (dbPath *DBPath) getUserByEmail(email string) (User, bool, error) {
 }
 
 func (dbPath DBPath) AuthUser(email string, password []byte, jwtSecret string, expiresIn int) (authenticatedUser, bool, error) {
+	dbPath.Mu.RLock()
+	defer dbPath.Mu.RUnlock()
+
 	userGeneral, exists, err := dbPath.getUserByEmail(email)
 	user := authenticatedUser{
 		Email: userGeneral.Email,
@@ -194,6 +197,9 @@ func (dbPath DBPath) AuthUser(email string, password []byte, jwtSecret string, e
 }
 
 func (dbPath *DBPath) UpdateUser(token *jwt.Token, newCreds Creds) (User, error) {
+	dbPath.Mu.Lock()
+	defer dbPath.Mu.Unlock()
+
 	var updatedUser User
 
 	userIdStr, err := token.Claims.GetSubject()

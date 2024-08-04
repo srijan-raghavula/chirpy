@@ -2,19 +2,22 @@ package main
 
 import (
 	"encoding/json"
-	"errors"
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/srijan-raghavula/chirpy/internal/database"
 	"golang.org/x/crypto/bcrypt"
+	"log"
 	"net/http"
 	"strings"
-	"time"
 )
 
 type userLogin struct {
 	Email        string `json:"email"`
 	Password     string `json:"password"`
 	ExpiresInSec int    `json:"expires_in_seconds"`
+}
+
+type myClaims struct {
+	jwt.RegisteredClaims
 }
 
 const cost int = bcrypt.DefaultCost
@@ -95,40 +98,44 @@ func (apiCfg *apiConfig) updateUserCreds(w http.ResponseWriter, r *http.Request)
 	decoder := json.NewDecoder(r.Body)
 	newCreds := database.Creds{}
 
-	tokenStr := strings.TrimPrefix("Bearer ", r.Header.Get("token"))
-	token, err := jwt.ParseWithClaims(tokenStr, &jwt.RegisteredClaims{Issuer: "chirpy"}, func(token *jwt.Token) (interface{}, error) {
-		if token.Method.Alg() != jwt.SigningMethodHS256.Alg() {
-			return []byte{}, errors.New("different signing method")
+	tokenStr := func() string {
+		header := r.Header.Get("Authorization")
+		if separated := strings.Split(header, " "); separated[0] == "Bearer" {
+			return separated[1]
 		}
-		if issuer, _ := token.Claims.GetIssuer(); issuer != "chirpy" {
-			return []byte{}, errors.New("invalid issuer")
-		}
-
-		expirationTime, _ := token.Claims.GetExpirationTime()
-		if time.Now().After(expirationTime.Time) {
-			return []byte{}, errors.New("token expired")
-		}
-
-		return apiCfg.jwtSecret, nil
+		return ""
+	}()
+	log.Println(tokenStr)
+	token, err := jwt.ParseWithClaims(tokenStr, &myClaims{}, func(token *jwt.Token) (interface{}, error) {
+		return []byte(apiCfg.jwtSecret), nil
 	})
+	log.Println(token)
+	if err != nil {
+		respondWithError(w, err.Error())
+		return
+	}
 
 	if !token.Valid {
 		w.WriteHeader(http.StatusUnauthorized)
 		w.Write([]byte("Unauthorized access"))
+		return
 	}
 
 	err = decoder.Decode(&newCreds)
 	if err != nil {
 		respondWithError(w, err.Error())
+		return
 	}
 
 	updatedUser, err := dbPath.UpdateUser(token, newCreds)
 	if err != nil {
 		respondWithError(w, err.Error())
+		return
 	}
 	writeData, err := json.Marshal(updatedUser)
 	if err != nil {
 		respondWithError(w, err.Error())
+		return
 	}
 	w.WriteHeader(http.StatusOK)
 	w.Write(writeData)
