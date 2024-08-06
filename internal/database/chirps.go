@@ -26,7 +26,7 @@ type Chirp struct {
 func (dbPath *DBPath) GetChirps(path string) ([]byte, error) {
 
 	dbPath.Mu.RLock()
-	dbPath.Mu.RUnlock()
+	defer dbPath.Mu.RUnlock()
 
 	_, err := os.Stat(dbPath.Path)
 	if err != nil {

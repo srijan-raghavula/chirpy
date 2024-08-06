@@ -66,7 +66,10 @@ func main() {
 
 	mux.HandleFunc("POST /api/users", usrCfg.createUser)
 	mux.HandleFunc("PUT /api/users", apiCfg.updateUserCreds)
+
 	mux.HandleFunc("POST /api/login", apiCfg.login)
+	mux.HandleFunc("POST /api/refresh", apiCfg.refreshToken)
+	mux.HandleFunc("POST /api/revoke", apiCfg.revokeToken)
 
 	log.Println("Server running")
 	chirpyServer.ListenAndServe()

@@ -6,14 +6,17 @@ import (
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/srijan-raghavula/chirpy/internal/secret"
 	"golang.org/x/crypto/bcrypt"
+	"log"
 	"os"
 	"strconv"
 	"time"
 )
 
 type User struct {
-	Id    int    `json:"id"`
-	Email string `json:"email"`
+	Id           int    `json:"id"`
+	Email        string `json:"email"`
+	RefreshToken string `json:"refresh_token"`
+	ExpiresAt    time.Time
 }
 
 type UserLogin struct {
@@ -23,9 +26,10 @@ type UserLogin struct {
 }
 
 type authenticatedUser struct {
-	Email string `json:"email"`
-	Id    int    `json:"id"`
-	Token string `json:"token"`
+	Email        string `json:"email"`
+	Id           int    `json:"id"`
+	Token        string `json:"token"`
+	RefreshToken string `json:"refresh_token"`
 }
 
 type UserPassword struct {
@@ -131,6 +135,9 @@ func (dbPath *DBPath) GetUser(userId int) (User, error) {
 	if err != nil {
 		return User{}, errors.New("Error unmarshaling data")
 	}
+	if _, ok := dataJSON.Users[userId]; !ok {
+		return User{}, errors.New("User doesn't exist")
+	}
 
 	return dataJSON.Users[userId], nil
 }
@@ -138,6 +145,7 @@ func (dbPath *DBPath) GetUser(userId int) (User, error) {
 func (dbPath *DBPath) getUserByEmail(email string) (User, bool, error) {
 	dbPath.Mu.RLock()
 	defer dbPath.Mu.RUnlock()
+
 	var db DBStructure
 
 	data, err := os.ReadFile(dbPath.Path)
@@ -158,11 +166,52 @@ func (dbPath *DBPath) getUserByEmail(email string) (User, bool, error) {
 	return User{}, false, nil
 }
 
+func (dbPath *DBPath) getUserByToken(token string) (User, bool, error) {
+	dbPath.Mu.RLock()
+	defer dbPath.Mu.RUnlock()
+
+	var db DBStructure
+
+	data, err := os.ReadFile(dbPath.Path)
+	if err != nil {
+		return User{}, false, err
+	}
+	err = json.Unmarshal(data, &db)
+	if err != nil {
+		return User{}, false, err
+	}
+
+	idUserMap := db.Users
+	for _, v := range idUserMap {
+		if token == v.RefreshToken {
+			return v, true, nil
+		}
+	}
+	return User{}, false, nil
+}
+
+func (dbPath *DBPath) ValidateToken(token string) (bool, int, error) {
+	user, exist, err := dbPath.getUserByToken(token)
+	if err != nil {
+		return false, 0, err
+	}
+	if !exist {
+		return false, 0, nil
+	}
+	if time.Now().UTC().After(user.ExpiresAt) {
+		return false, 0, nil
+	}
+
+	return true, user.Id, nil
+}
+
 func (dbPath DBPath) AuthUser(email string, password []byte, jwtSecret string, expiresIn int) (authenticatedUser, bool, error) {
+	log.Println("auth user called")
 	dbPath.Mu.RLock()
 	defer dbPath.Mu.RUnlock()
 
 	userGeneral, exists, err := dbPath.getUserByEmail(email)
+	log.Println("got user info")
 	user := authenticatedUser{
 		Email: userGeneral.Email,
 		Id:    userGeneral.Id,
@@ -189,16 +238,28 @@ func (dbPath DBPath) AuthUser(email string, password []byte, jwtSecret string, e
 	}
 
 	user.Token, err = secret.GetToken(user.Id, time.Duration(expiresIn), jwtSecret)
+	log.Println("got token")
 	if err != nil {
 		return user, false, err
+	}
+	user.RefreshToken, err = secret.GetRefreshToken()
+	log.Println("got refresh token")
+	if err != nil {
+		return user, false, err
+	}
+	log.Println("adding token")
+	err = dbPath.AddToken(user.Id, user.RefreshToken)
+	log.Println("token added to db")
+	if err != nil {
+		return user, false, nil
 	}
 
 	return user, true, nil
 }
 
 func (dbPath *DBPath) UpdateUser(token *jwt.Token, newCreds Creds) (User, error) {
-	dbPath.Mu.Lock()
-	defer dbPath.Mu.Unlock()
+	dbPath.Mu.RLock()
+	defer dbPath.Mu.RUnlock()
 
 	var updatedUser User
 
@@ -234,7 +295,101 @@ func (dbPath *DBPath) UpdateUser(token *jwt.Token, newCreds Creds) (User, error)
 	oldPassword.Password = passwordHash
 	db.Passwords[userId] = oldPassword
 
-	updatedUser, err = dbPath.GetUser(userId)
+	dbFile, err := os.Create("database.json")
+	if err != nil {
+		return User{}, errors.New("Failed to create a file")
+	}
 
-	return updatedUser, err
+	data, err = json.Marshal(db)
+	if err != nil {
+		return User{}, err
+	}
+
+	_, err = dbFile.Write(data)
+	if err != nil {
+		return User{}, errors.New("Error updating database")
+	}
+
+	return dbPath.GetUser(userId)
+}
+
+func (dbPath *DBPath) AddToken(userId int, token string) error {
+	log.Println("received call to addtoken")
+	dbPath.Mu.Lock()
+	defer dbPath.Mu.Unlock()
+	log.Println("adding token")
+
+	data, err := os.ReadFile(dbPath.Path)
+	if err != nil {
+		return err
+	}
+
+	var db DBStructure
+	err = json.Unmarshal(data, &db)
+	if err != nil {
+		return err
+	}
+
+	user := db.Users[userId]
+	user.RefreshToken = token
+	user.ExpiresAt = time.Now().UTC().Add(60 * 3600 * time.Second)
+	db.Users[userId] = user
+
+	dbFile, err := os.Create(dbPath.Path)
+	if err != nil {
+		return err
+	}
+
+	data, err = json.Marshal(db)
+	if err != nil {
+		return err
+	}
+
+	_, err = dbFile.Write(data)
+	if err != nil {
+		return errors.New("Error updating database")
+	}
+	log.Println("token added")
+
+	return nil
+}
+
+func (dbPath *DBPath) RemoveToken(token string) error {
+	dbPath.Mu.Lock()
+	defer dbPath.Mu.Unlock()
+
+	user, exist, err := dbPath.getUserByToken(token)
+	if err != nil {
+		return err
+	}
+	if !exist {
+		return errors.New("user doesn't exist")
+	}
+
+	var db DBStructure
+	data, err := os.ReadFile(dbPath.Path)
+	if err != nil {
+		return err
+	}
+	json.Unmarshal(data, &db)
+
+	user.RefreshToken = ""
+	db.Users[user.Id] = user
+
+	dbFile, err := os.Create(dbPath.Path)
+	if err != nil {
+		return err
+	}
+
+	data, err = json.Marshal(db)
+	if err != nil {
+		return err
+	}
+
+	_, err = dbFile.Write(data)
+	if err != nil {
+		return errors.New("Error updating database")
+	}
+
+	return nil
 }
