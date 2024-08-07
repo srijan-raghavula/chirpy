@@ -19,8 +19,9 @@ type DBStructure struct {
 }
 
 type Chirp struct {
-	Id      int    `json:"id"`
-	Message string `json:"body"`
+	Id       int    `json:"id"`
+	AuthorId int    `json:"author_id"`
+	Message  string `json:"body"`
 }
 
 func (dbPath *DBPath) GetChirps(path string) ([]byte, error) {

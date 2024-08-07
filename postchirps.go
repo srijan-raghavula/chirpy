@@ -44,8 +44,9 @@ func (cfg *apiConfig) validateAndPOSTHandler(w http.ResponseWriter, r *http.Requ
 
 	newId := cfg.getNewId()
 	chirp := database.Chirp{
-		Id:      newId,
-		Message: rBody.Message,
+		Id:       newId,
+		AuthorId: newId,
+		Message:  rBody.Message,
 	}
 
 	err = dbPath.AddChirp(chirp)

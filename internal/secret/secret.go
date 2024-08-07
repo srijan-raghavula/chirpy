@@ -26,7 +26,7 @@ func GetToken(userId int, expiration time.Duration, secret string) (string, erro
 }
 
 func GetRefreshToken() (string, error) {
-	randomData := []byte{}
+	randomData := make([]byte, 32)
 	_, err := rand.Read(randomData)
 	if err != nil {
 		return "", err

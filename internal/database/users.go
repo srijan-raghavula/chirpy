@@ -181,10 +181,13 @@ func (dbPath *DBPath) getUserByToken(token string) (User, bool, error) {
 		return User{}, false, err
 	}
 
-	idUserMap := db.Users
-	for _, v := range idUserMap {
-		if token == v.RefreshToken {
-			return v, true, nil
+	if token == "" {
+		return User{}, false, errors.New("empty token")
+	}
+	UserMap := db.Users
+	for _, u := range UserMap {
+		if token == u.RefreshToken {
+			return u, true, nil
 		}
 	}
 	return User{}, false, nil
@@ -192,13 +195,11 @@ func (dbPath *DBPath) getUserByToken(token string) (User, bool, error) {
 
 func (dbPath *DBPath) ValidateToken(token string) (bool, int, error) {
 	user, exist, err := dbPath.getUserByToken(token)
+	log.Printf("got: %s, toverify: %s", user.RefreshToken, token)
 	if err != nil {
 		return false, 0, err
 	}
 	if !exist {
-		return false, 0, nil
-	}
-	if time.Now().UTC().After(user.ExpiresAt) {
 		return false, 0, nil
 	}
 
@@ -206,12 +207,10 @@ func (dbPath *DBPath) ValidateToken(token string) (bool, int, error) {
 }
 
 func (dbPath DBPath) AuthUser(email string, password []byte, jwtSecret string, expiresIn int) (authenticatedUser, bool, error) {
-	log.Println("auth user called")
 	dbPath.Mu.RLock()
 	defer dbPath.Mu.RUnlock()
 
 	userGeneral, exists, err := dbPath.getUserByEmail(email)
-	log.Println("got user info")
 	user := authenticatedUser{
 		Email: userGeneral.Email,
 		Id:    userGeneral.Id,
@@ -237,21 +236,14 @@ func (dbPath DBPath) AuthUser(email string, password []byte, jwtSecret string, e
 		return authenticatedUser{}, false, nil
 	}
 
-	user.Token, err = secret.GetToken(user.Id, time.Duration(expiresIn), jwtSecret)
-	log.Println("got token")
+	user.Token, err = secret.GetToken(user.Id, time.Duration(3600*time.Second), jwtSecret)
 	if err != nil {
 		return user, false, err
 	}
 	user.RefreshToken, err = secret.GetRefreshToken()
-	log.Println("got refresh token")
+	log.Println(user.RefreshToken)
 	if err != nil {
 		return user, false, err
-	}
-	log.Println("adding token")
-	err = dbPath.AddToken(user.Id, user.RefreshToken)
-	log.Println("token added to db")
-	if err != nil {
-		return user, false, nil
 	}
 
 	return user, true, nil
@@ -314,10 +306,8 @@ func (dbPath *DBPath) UpdateUser(token *jwt.Token, newCreds Creds) (User, error)
 }
 
 func (dbPath *DBPath) AddToken(userId int, token string) error {
-	log.Println("received call to addtoken")
 	dbPath.Mu.Lock()
 	defer dbPath.Mu.Unlock()
-	log.Println("adding token")
 
 	data, err := os.ReadFile(dbPath.Path)
 	if err != nil {
@@ -349,22 +339,21 @@ func (dbPath *DBPath) AddToken(userId int, token string) error {
 	if err != nil {
 		return errors.New("Error updating database")
 	}
-	log.Println("token added")
 
 	return nil
 }
 
 func (dbPath *DBPath) RemoveToken(token string) error {
-	dbPath.Mu.Lock()
-	defer dbPath.Mu.Unlock()
-
 	user, exist, err := dbPath.getUserByToken(token)
 	if err != nil {
 		return err
 	}
 	if !exist {
-		return errors.New("user doesn't exist")
+		return err
 	}
+
+	dbPath.Mu.Lock()
+	defer dbPath.Mu.Unlock()
 
 	var db DBStructure
 	data, err := os.ReadFile(dbPath.Path)
@@ -377,6 +366,7 @@ func (dbPath *DBPath) RemoveToken(token string) error {
 	db.Users[user.Id] = user
 
 	dbFile, err := os.Create(dbPath.Path)
+	defer dbFile.Close()
 	if err != nil {
 		return err
 	}
