@@ -16,6 +16,7 @@ type User struct {
 	Email        string `json:"email"`
 	RefreshToken string `json:"refresh_token"`
 	ExpiresAt    time.Time
+	IsRedUser    bool `json:"is_chirpy_red"`
 }
 
 type UserLogin struct {
@@ -29,6 +30,7 @@ type authenticatedUser struct {
 	Id           int    `json:"id"`
 	Token        string `json:"token"`
 	RefreshToken string `json:"refresh_token"`
+	IsRedUser    bool   `json:"is_chirpy_red"`
 }
 
 type UserPassword struct {
@@ -238,8 +240,9 @@ func (dbPath DBPath) AuthUser(email string, password []byte, jwtSecret string, e
 
 	userGeneral, exists, err := dbPath.getUserByEmail(email)
 	user := authenticatedUser{
-		Email: userGeneral.Email,
-		Id:    userGeneral.Id,
+		Email:     userGeneral.Email,
+		Id:        userGeneral.Id,
+		IsRedUser: userGeneral.IsRedUser,
 	}
 	if err != nil {
 		return user, false, err
@@ -404,6 +407,41 @@ func (dbPath *DBPath) RemoveToken(token string) error {
 	_, err = dbFile.Write(data)
 	if err != nil {
 		return errors.New("Error updating database")
+	}
+
+	return nil
+}
+
+func (dbPath *DBPath) UpgradeUser(user User) error {
+	dbPath.Mu.Lock()
+	defer dbPath.Mu.Unlock()
+
+	data, err := os.ReadFile(dbPath.Path)
+	if err != nil {
+		return err
+	}
+
+	var db DBStructure
+	err = json.Unmarshal(data, &db)
+	if err != nil {
+		return err
+	}
+
+	db.Users[user.Id] = user
+
+	dbFile, err := os.Create(dbPath.Path)
+	if err != nil {
+		return err
+	}
+
+	writeData, err := json.Marshal(db)
+	if err != nil {
+		return err
+	}
+
+	_, err = dbFile.Write(writeData)
+	if err != nil {
+		return err
 	}
 
 	return nil

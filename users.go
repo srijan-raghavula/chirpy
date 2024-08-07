@@ -16,6 +16,13 @@ type userLogin struct {
 	ExpiresInSec int    `json:"expires_in_seconds"`
 }
 
+type webhook struct {
+	Event string `json:"event"`
+	Data  struct {
+		UserId int `json:"user_id"`
+	} `json:"data"`
+}
+
 type myClaims struct {
 	jwt.RegisteredClaims
 }
@@ -187,5 +194,46 @@ func (apiCfg *apiConfig) revokeToken(w http.ResponseWriter, r *http.Request) {
 		respondWithError(w, err.Error())
 		return
 	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
+func (apiCfg *apiConfig) upgradeUser(w http.ResponseWriter, r *http.Request) {
+	decoder := json.NewDecoder(r.Body)
+	body := &webhook{}
+	err := decoder.Decode(body)
+	if err != nil {
+		respondWithError(w, err.Error())
+		return
+	}
+
+	header := r.Header.Get("Authorization")
+	if header == "ApiKey" {
+		w.WriteHeader(http.StatusUnauthorized)
+		return
+	}
+	key := strings.TrimPrefix(header, "ApiKey ")
+	if key != apiCfg.polkaAPIKey {
+		w.WriteHeader(http.StatusUnauthorized)
+		return
+	}
+
+	if body.Event != "user.upgraded" {
+		w.WriteHeader(http.StatusNoContent)
+		return
+	}
+
+	user, err := dbPath.GetUser(body.Data.UserId)
+	if err != nil {
+		respondWithError(w, err.Error())
+		return
+	}
+
+	user.IsRedUser = true
+	err = dbPath.UpgradeUser(user)
+	if err != nil {
+		respondWithError(w, err.Error())
+		return
+	}
+
 	w.WriteHeader(http.StatusNoContent)
 }

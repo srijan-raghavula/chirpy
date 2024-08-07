@@ -11,9 +11,10 @@ import (
 )
 
 type apiConfig struct {
-	fsVisits  int
-	id        int
-	jwtSecret string
+	fsVisits    int
+	id          int
+	jwtSecret   string
+	polkaAPIKey string
 }
 
 type userConfig struct {
@@ -39,10 +40,12 @@ func main() {
 
 	mux := http.NewServeMux()
 	secret := os.Getenv("JWT_SECRET")
+	apiKey := os.Getenv("POLKA_KEY")
 	apiCfg := apiConfig{
-		fsVisits:  0,
-		id:        0,
-		jwtSecret: secret,
+		fsVisits:    0,
+		id:          0,
+		jwtSecret:   secret,
+		polkaAPIKey: apiKey,
 	}
 	usrCfg := userConfig{
 		id: 0,
@@ -71,6 +74,8 @@ func main() {
 	mux.HandleFunc("POST /api/login", apiCfg.login)
 	mux.HandleFunc("POST /api/refresh", apiCfg.refreshToken)
 	mux.HandleFunc("POST /api/revoke", apiCfg.revokeToken)
+
+	mux.HandleFunc("POST /api/polka/webhooks", apiCfg.upgradeUser)
 
 	log.Println("Server running")
 	chirpyServer.ListenAndServe()
