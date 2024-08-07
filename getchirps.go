@@ -8,7 +8,7 @@ import (
 	"strconv"
 )
 
-func (cfg *apiConfig) getAllChirps(w http.ResponseWriter, r *http.Request) {
+func (apiCfg *apiConfig) getAllChirps(w http.ResponseWriter, r *http.Request) {
 
 	data, err := dbPath.GetChirps("database.json")
 	if err != nil {
@@ -35,11 +35,11 @@ func (cfg *apiConfig) getAllChirps(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	w.Write(writeData)
 	w.WriteHeader(http.StatusOK)
+	w.Write(writeData)
 }
 
-func (cfg *apiConfig) getChirp(w http.ResponseWriter, r *http.Request) {
+func (apiCfg *apiConfig) getChirp(w http.ResponseWriter, r *http.Request) {
 
 	data, err := dbPath.GetChirps("database.json")
 	if err != nil {
@@ -54,8 +54,8 @@ func (cfg *apiConfig) getChirp(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	strid := r.PathValue("chirpID")
-	id, err := strconv.Atoi(strid)
+	strId := r.PathValue("chirpID")
+	id, err := strconv.Atoi(strId)
 	if err != nil {
 		respondWithError(w, "String conversion error")
 		return

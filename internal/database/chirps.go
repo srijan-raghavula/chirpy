@@ -68,7 +68,7 @@ func (dbPath *DBPath) AddChirp(chirp Chirp) error {
 		return nil
 	}
 
-	data, err := os.ReadFile("database.json")
+	data, err := os.ReadFile(dbPath.Path)
 	if err != nil {
 		return err
 	}
@@ -93,5 +93,34 @@ func (dbPath *DBPath) AddChirp(chirp Chirp) error {
 		return errors.New("Error updating database")
 	}
 
+	return nil
+}
+
+func (dbPath *DBPath) RemoveChirp(chirpId int) error {
+	dbPath.Mu.Lock()
+	defer dbPath.Mu.Unlock()
+
+	_, err := os.Stat(dbPath.Path)
+	if err != nil {
+		return errors.New("No chirps in database yet")
+	}
+
+	data, err := os.ReadFile(dbPath.Path)
+	if err != nil {
+		return err
+	}
+
+	var dataJSON DBStructure
+	err = json.Unmarshal(data, &dataJSON)
+	if err != nil {
+		return err
+	}
+
+	_, ok := dataJSON.Chirps[chirpId]
+	if !ok {
+		return errors.New("No such chirp with the id")
+	}
+
+	delete(dataJSON.Chirps, chirpId)
 	return nil
 }

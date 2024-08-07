@@ -6,10 +6,8 @@ import (
 	"github.com/srijan-raghavula/chirpy/internal/database"
 	"github.com/srijan-raghavula/chirpy/internal/secret"
 	"golang.org/x/crypto/bcrypt"
-	"log"
 	"net/http"
 	"strings"
-	"time"
 )
 
 type userLogin struct {
@@ -149,7 +147,7 @@ func (apiCfg *apiConfig) refreshToken(w http.ResponseWriter, r *http.Request) {
 
 	}()
 
-	valid, userId, err := dbPath.ValidateToken(tokenStr)
+	valid, userId, err := dbPath.ValidateToken(tokenStr, apiCfg.jwtSecret)
 	if err != nil {
 		respondWithError(w, err.Error())
 		return
@@ -159,7 +157,7 @@ func (apiCfg *apiConfig) refreshToken(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	tokenStr, err = secret.GetToken(userId, time.Duration(3600*time.Second), apiCfg.jwtSecret)
+	tokenStr, err = secret.GetRefreshToken()
 	if err != nil {
 		respondWithError(w, err.Error())
 	}
@@ -184,7 +182,6 @@ func (apiCfg *apiConfig) revokeToken(w http.ResponseWriter, r *http.Request) {
 		return strings.TrimPrefix(header, "Bearer ")
 	}()
 
-	log.Println(tokenStr)
 	err := dbPath.RemoveToken(tokenStr)
 	if err != nil {
 		respondWithError(w, err.Error())

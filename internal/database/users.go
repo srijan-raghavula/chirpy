@@ -6,7 +6,6 @@ import (
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/srijan-raghavula/chirpy/internal/secret"
 	"golang.org/x/crypto/bcrypt"
-	"log"
 	"os"
 	"strconv"
 	"time"
@@ -44,10 +43,11 @@ type Creds struct {
 }
 
 func (dbPath *DBPath) AddUser(user User, password UserPassword) error {
+	err := dbPath.checkIfExists(user.Email)
 	dbPath.Mu.Lock()
 	defer dbPath.Mu.Unlock()
 
-	_, err := os.Stat(dbPath.Path)
+	_, err = os.Stat(dbPath.Path)
 	if err != nil {
 		dbFile, err := os.Create("database.json")
 		if err != nil {
@@ -89,14 +89,6 @@ func (dbPath *DBPath) AddUser(user User, password UserPassword) error {
 		return err
 	}
 
-	_, exists, err := dbPath.getUserByEmail(user.Email)
-	if err != nil {
-		return err
-	}
-	if exists {
-		return errors.New("User exists")
-	}
-
 	dataJSON.Users[user.Id] = user
 	dataJSON.Passwords[user.Id] = password
 
@@ -114,6 +106,17 @@ func (dbPath *DBPath) AddUser(user User, password UserPassword) error {
 		return errors.New("Error updating database")
 	}
 
+	return nil
+}
+
+func (dbPath *DBPath) checkIfExists(email string) error {
+	_, exists, err := dbPath.getUserByEmail(email)
+	if err != nil {
+		return err
+	}
+	if exists {
+		return errors.New("User exists")
+	}
 	return nil
 }
 
@@ -184,8 +187,8 @@ func (dbPath *DBPath) getUserByToken(token string) (User, bool, error) {
 	if token == "" {
 		return User{}, false, errors.New("empty token")
 	}
-	UserMap := db.Users
-	for _, u := range UserMap {
+	userMap := db.Users
+	for _, u := range userMap {
 		if token == u.RefreshToken {
 			return u, true, nil
 		}
@@ -193,9 +196,31 @@ func (dbPath *DBPath) getUserByToken(token string) (User, bool, error) {
 	return User{}, false, nil
 }
 
-func (dbPath *DBPath) ValidateToken(token string) (bool, int, error) {
+func (dbPath *DBPath) ValidateToken(tokenStr, secret string) (bool, int, error) {
+	type myClaims struct {
+		jwt.RegisteredClaims
+	}
+	token, err := jwt.ParseWithClaims(tokenStr, &myClaims{}, func(*jwt.Token) (interface{}, error) {
+		return []byte(secret), nil
+	})
+	if err != nil {
+		return false, 0, err
+	}
+	if !token.Valid {
+		return false, 0, nil
+	}
+
+	userIdStr, err := token.Claims.GetSubject()
+	if err != nil {
+		return false, 0, err
+	}
+	userId, err := strconv.Atoi(userIdStr)
+
+	return true, userId, nil
+}
+
+func (dbPath *DBPath) ValidateRefreshToken(token string) (bool, int, error) {
 	user, exist, err := dbPath.getUserByToken(token)
-	log.Printf("got: %s, toverify: %s", user.RefreshToken, token)
 	if err != nil {
 		return false, 0, err
 	}
@@ -204,6 +229,7 @@ func (dbPath *DBPath) ValidateToken(token string) (bool, int, error) {
 	}
 
 	return true, user.Id, nil
+
 }
 
 func (dbPath DBPath) AuthUser(email string, password []byte, jwtSecret string, expiresIn int) (authenticatedUser, bool, error) {
@@ -241,7 +267,6 @@ func (dbPath DBPath) AuthUser(email string, password []byte, jwtSecret string, e
 		return user, false, err
 	}
 	user.RefreshToken, err = secret.GetRefreshToken()
-	log.Println(user.RefreshToken)
 	if err != nil {
 		return user, false, err
 	}
@@ -322,7 +347,7 @@ func (dbPath *DBPath) AddToken(userId int, token string) error {
 
 	user := db.Users[userId]
 	user.RefreshToken = token
-	user.ExpiresAt = time.Now().UTC().Add(60 * 3600 * time.Second)
+	user.ExpiresAt = time.Now().UTC().Add(60 * 24 * 3600 * time.Second)
 	db.Users[userId] = user
 
 	dbFile, err := os.Create(dbPath.Path)
