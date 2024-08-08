@@ -26,6 +26,30 @@ func (apiCfg *apiConfig) getAllChirps(w http.ResponseWriter, r *http.Request) {
 	var chirpSlice []database.Chirp
 
 	queryStr := r.URL.Query().Get("author_id")
+	querySort := r.URL.Query().Get("sort")
+
+	if queryStr != "" && querySort == "desc" {
+		query, err := strconv.Atoi(queryStr)
+		if err != nil {
+			respondWithError(w, err.Error())
+		}
+		for _, v := range dataJSON.Chirps {
+			if v.AuthorId == query {
+				chirpSlice = append(chirpSlice, v)
+			}
+		}
+		sort.Slice(chirpSlice, func(i, j int) bool { return chirpSlice[i].Id > chirpSlice[j].Id })
+		writeData, err := json.Marshal(chirpSlice)
+		if err != nil {
+			respondWithError(w, "Error writing response")
+			return
+		}
+
+		w.WriteHeader(http.StatusOK)
+		w.Write(writeData)
+		return
+	}
+
 	if queryStr != "" {
 		query, err := strconv.Atoi(queryStr)
 		if err != nil {
@@ -41,6 +65,23 @@ func (apiCfg *apiConfig) getAllChirps(w http.ResponseWriter, r *http.Request) {
 		if err != nil {
 			respondWithError(w, err.Error())
 		}
+		w.Write(writeData)
+		return
+	}
+
+	if querySort == "desc" {
+		for _, v := range dataJSON.Chirps {
+			chirpSlice = append(chirpSlice, v)
+		}
+
+		sort.Slice(chirpSlice, func(i, j int) bool { return chirpSlice[i].Id > chirpSlice[j].Id })
+		writeData, err := json.Marshal(chirpSlice)
+		if err != nil {
+			respondWithError(w, "Error writing response")
+			return
+		}
+
+		w.WriteHeader(http.StatusOK)
 		w.Write(writeData)
 		return
 	}
