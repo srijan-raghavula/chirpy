@@ -24,6 +24,27 @@ func (apiCfg *apiConfig) getAllChirps(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var chirpSlice []database.Chirp
+
+	queryStr := r.URL.Query().Get("author_id")
+	if queryStr != "" {
+		query, err := strconv.Atoi(queryStr)
+		if err != nil {
+			respondWithError(w, err.Error())
+		}
+		for _, v := range dataJSON.Chirps {
+			if v.AuthorId == query {
+				chirpSlice = append(chirpSlice, v)
+			}
+		}
+		w.WriteHeader(http.StatusOK)
+		writeData, err := json.Marshal(chirpSlice)
+		if err != nil {
+			respondWithError(w, err.Error())
+		}
+		w.Write(writeData)
+		return
+	}
+
 	for _, v := range dataJSON.Chirps {
 		chirpSlice = append(chirpSlice, v)
 	}
