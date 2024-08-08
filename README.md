@@ -8,7 +8,7 @@
 
     Chirpy is similar to Twitter/X. Microblogs limited to 140 characters are called chirps.
 
-Users can:
+## What can users do?
 
 - Create account (POST /api/users)
 - Update credentials (PUT /api/users)
