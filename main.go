@@ -51,7 +51,8 @@ func main() {
 		id: 0,
 	}
 
-	mux.Handle("/app/*", apiCfg.middlewareVisitsInc(http.StripPrefix("/app", http.FileServer(http.Dir(".")))))
+	mux.Handle("/app/*", apiCfg.middlewareVisitsInc(
+		http.StripPrefix("/app", http.FileServer(http.Dir(".")))))
 	chirpyServer := &http.Server{
 		Addr:    ":8080",
 		Handler: mux,
